@@ -49,4 +49,41 @@ except Exception as e:
     st.error("Nie można pobrać kategorii. Dodaj najpierw przynajmniej jedną kategorię.")
 
 with st.form("product_form", clear_on_submit=True):
-    prod_nazwa = st
+    prod_nazwa = st.text_input("Nazwa produktu")
+    prod_liczba = st.number_input("Liczba sztuk", min_value=0, step=1)
+    prod_cena = st.number_input("Cena (w zł)", min_value=0.0, format="%.2f")
+    
+    wybor_kat = st.selectbox("Wybierz kategorię", options=list(kategorie_dict.keys()))
+    
+    submit_prod = st.form_submit_button("Zapisz produkt")
+    
+    if submit_prod:
+        if prod_nazwa and wybor_kat:
+            nowy_produkt = {
+                "nazwa": prod_nazwa,
+                "liczba": prod_liczba,
+                "cena": prod_cena,
+                "kategoria_id": kategorie_dict[wybor_kat]
+            }
+            try:
+                supabase.table("produkt").insert(nowy_produkt).execute()
+                st.success(f"Produkt '{prod_nazwa}' został dodany!")
+            except Exception as e:
+                st.error(f"Błąd podczas zapisu produktu: {e}")
+        else:
+            st.warning("Wypełnij nazwę produktu i wybierz kategorię.")
+
+st.divider()
+
+# --- SEKCJA 3: PODGLĄD DANYCH ---
+st.header("3. Aktualny stan magazynu")
+if st.button("Odśwież listę"):
+    try:
+        # Pobieramy produkty wraz z nazwą kategorii (tzw. join)
+        res = supabase.table("produkt").select("nazwa, liczba, cena, Kategoria(nazwa)").execute()
+        if res.data:
+            st.dataframe(res.data)
+        else:
+            st.info("Baza danych jest pusta.")
+    except Exception as e:
+        st.error(f"Błąd podglądu: {e}")
