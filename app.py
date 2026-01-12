@@ -1,17 +1,3 @@
-Aby połączyć Streamlit z bazą danych Supabase (która opiera się na PostgreSQL), najprościej jest wykorzystać bibliotekę supabase-py.
-
-Poniżej znajdziesz kompletny kod, który możesz zapisać w pliku np. app.py i umieścić na swoim GitHubie.
-
-Przygotowanie środowiska
-Zanim uruchomisz kod, upewnij się, że w repozytorium (lub w środowisku Streamlit Cloud) masz plik requirements.txt z następującą zawartością:
-
-Plaintext
-
-streamlit
-supabase
-Kod aplikacji Streamlit (app.py)
-Python
-
 import streamlit as st
 from supabase import create_client, Client
 
