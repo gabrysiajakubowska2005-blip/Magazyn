@@ -1,111 +1,106 @@
 import streamlit as st
+import pandas as pd
+import plotly.express as px
 from supabase import create_client, Client
 
+# --- KONFIGURACJA STRONY ---
+st.set_page_config(page_title="Smart Inventory", layout="wide", initial_sidebar_state="expanded")
+
+# Custom CSS dla nowoczesnego wyglądu
+st.markdown("""
+    <style>
+    .main { background-color: #f8f9fa; }
+    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    </style>
+    """, unsafe_allow_html=True)
+
 # 1. Konfiguracja połączenia z Supabase
-# Upewnij się, że te dane są w Streamlit Cloud -> Settings -> Secrets
 try:
     url = st.secrets["SUPABASE_URL"]
     key = st.secrets["SUPABASE_KEY"]
     supabase: Client = create_client(url, key)
 except Exception as e:
-    st.error("Błąd konfiguracji Secrets. Sprawdź czy dodałeś SUPABASE_URL i SUPABASE_KEY.")
+    st.error("Błąd konfiguracji Secrets. Sprawdź ustawienia.")
     st.stop()
 
-st.title("📦 System Magazynowy")
-
-# --- SEKCJA 1: DODAWANIE KATEGORII ---
-st.header("1. Dodaj nową kategorię")
-with st.form("category_form", clear_on_submit=True):
-    kat_kod = st.text_input("Kod kategorii (np. AGD-01)")
-    kat_nazwa = st.text_input("Nazwa kategorii")
-    kat_opis = st.text_area("Opis")
+# --- SIDEBAR: DODAWANIE DANYCH ---
+with st.sidebar:
+    st.title("➕ Zarządzanie")
     
-    submit_kat = st.form_submit_button("Zapisz kategorię")
-    
-    if submit_kat:
-        if kat_kod and kat_nazwa:
-            data = {"kod": kat_kod, "nazwa": kat_nazwa, "opis": kat_opis}
-            try:
-                supabase.table("Kategoria").insert(data).execute()
-                st.success(f"Dodano kategorię: {kat_nazwa}")
-            except Exception as e:
-                st.error(f"Błąd bazy danych: {e}")
-        else:
-            st.warning("Kod i nazwa są wymagane!")
+    with st.expander("Nowa Kategoria", expanded=False):
+        with st.form("category_form", clear_on_submit=True):
+            kat_kod = st.text_input("Kod")
+            kat_nazwa = st.text_input("Nazwa")
+            submit_kat = st.form_submit_button("Dodaj")
+            if submit_kat and kat_kod and kat_nazwa:
+                supabase.table("Kategoria").insert({"kod": kat_kod, "nazwa": kat_nazwa}).execute()
+                st.toast("Dodano kategorię!", icon="✅")
 
-# Linia oddzielająca (zastępuje <hr>)
-st.divider()
+    with st.expander("Nowy Produkt", expanded=True):
+        try:
+            k_res = supabase.table("Kategoria").select("id, nazwa").execute()
+            k_dict = {item['nazwa']: item['id'] for item in k_res.data}
+            
+            with st.form("product_form", clear_on_submit=True):
+                p_nazwa = st.text_input("Nazwa produktu")
+                p_liczba = st.number_input("Ilość", min_value=0)
+                p_cena = st.number_input("Cena (PLN)", min_value=0.0, format="%.2f")
+                p_kat = st.selectbox("Kategoria", options=list(k_dict.keys()))
+                submit_prod = st.form_submit_button("Zapisz Produkt")
+                
+                if submit_prod and p_nazwa:
+                    supabase.table("produkt").insert({
+                        "nazwa": p_nazwa, "liczba": p_liczba, 
+                        "cena": p_cena, "kategoria_id": k_dict[p_kat]
+                    }).execute()
+                    st.toast("Produkt dodany!", icon="📦")
+        except:
+            st.warning("Najpierw dodaj kategorię.")
 
-# --- SEKCJA 2: DODAWANIE PRODUKTÓW ---
-st.header("2. Dodaj nowy produkt")
+# --- PANEL GŁÓWNY (DASHBOARD) ---
+st.title("📊 Dashboard Magazynowy")
 
-# Pobieranie listy kategorii do rozwijanego menu
+# Pobieranie danych
 try:
-    kategorie_res = supabase.table("Kategoria").select("id, nazwa").execute()
-    # Tworzymy słownik {Nazwa: ID}, aby użytkownik widział nazwę, a baza dostała ID
-    kategorie_dict = {item['nazwa']: item['id'] for item in kategorie_res.data}
-except Exception as e:
-    kategorie_dict = {}
-    st.error("Nie można pobrać kategorii. Dodaj najpierw przynajmniej jedną kategorię.")
-
-with st.form("product_form", clear_on_submit=True):
-    prod_nazwa = st.text_input("Nazwa produktu")
-    prod_liczba = st.number_input("Liczba sztuk", min_value=0, step=1)
-    prod_cena = st.number_input("Cena (w zł)", min_value=0.0, format="%.2f")
+    res = supabase.table("produkt").select("nazwa, liczba, cena, Kategoria(nazwa)").execute()
+    df = pd.DataFrame(res.data)
     
-    wybor_kat = st.selectbox("Wybierz kategorię", options=list(kategorie_dict.keys()))
-    
-    submit_prod = st.form_submit_button("Zapisz produkt")
-    
-    if submit_prod:
-        if prod_nazwa and wybor_kat:
-            nowy_produkt = {
-                "nazwa": prod_nazwa,
-                "liczba": prod_liczba,
-                "cena": prod_cena,
-                "kategoria_id": kategorie_dict[wybor_kat]
-            }
-            try:
-                supabase.table("produkt").insert(nowy_produkt).execute()
-                st.success(f"Produkt '{prod_nazwa}' został dodany!")
-            except Exception as e:
-                st.error(f"Błąd podczas zapisu produktu: {e}")
-        else:
-            st.warning("Wypełnij nazwę produktu i wybierz kategorię.")
-
-st.divider()
-
-# --- SEKCJA 3: PODGLĄD DANYCH ---
-st.header("3. Aktualny stan magazynu")
-if st.button("Odśwież listę"):
-    try:
-        # Pobieramy produkty wraz z nazwą kategorii (tzw. join)
-        res = supabase.table("produkt").select("nazwa, liczba, cena, Kategoria(nazwa)").execute()
-        if res.data:
-            st.dataframe(res.data)
-        else:
-            st.info("Baza danych jest pusta.")
-    except Exception as e:
-        st.error(f"Błąd podglądu: {e}")
-st.header("Analityka Zapasów")
-
-try:
-    # Wykonujemy zapytanie
-    response = supabase.table("produkty").select("nazwa, liczba").execute()
-    
-    if response.data:
-        import pandas as pd
-        df = pd.DataFrame(response.data)
+    if not df.empty:
+        # Przetwarzanie nazwy kategorii z relacji JSON
+        df['kategoria_nazwa'] = df['Kategoria'].apply(lambda x: x['nazwa'] if isinstance(x, dict) else "Brak")
         
-        # Sprawdzamy czy kolumny istnieją w pobranych danych
-        if 'nazwa' in df.columns and 'liczba' in df.columns:
-            df = df.set_index("nazwa")
-            st.subheader("Liczba sztuk na magazynie")
-            st.bar_chart(df["liczba"])
-        else:
-            st.warning("Pobrane dane nie zawierają oczekiwanych kolumn.")
+        # --- METRYKI ---
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Liczba Produktów", len(df))
+        m2.metric("Łączna ilość sztuk", df['liczba'].sum())
+        m3.metric("Wartość Magazynu", f"{ (df['liczba'] * df['cena']).sum():,.2f} PLN")
+
+        st.divider()
+
+        # --- WYKRESY ---
+        col_left, col_right = st.columns(2)
+
+        with col_left:
+            st.subheader("📦 Ilość sztuk na magazynie")
+            fig_qty = px.bar(df, x="nazwa", y="liczba", color="kategoria_nazwa",
+                             labels={'liczba': 'Sztuki', 'nazwa': 'Produkt'},
+                             template="plotly_white", color_discrete_sequence=px.colors.qualitative.Safe)
+            st.plotly_chart(fig_qty, use_container_width=True)
+
+        with col_right:
+            st.subheader("💰 Porównanie cen produktów")
+            fig_price = px.line(df.sort_values('cena'), x="nazwa", y="cena", 
+                                markers=True, labels={'cena': 'Cena (PLN)'},
+                                template="plotly_white")
+            fig_price.update_traces(line_color='#2ecc71', line_width=3)
+            st.plotly_chart(fig_price, use_container_width=True)
+
+        # --- TABELA DANYCH ---
+        st.subheader("📝 Szczegółowa lista")
+        st.dataframe(df[['nazwa', 'kategoria_nazwa', 'liczba', 'cena']], use_container_width=True)
+
     else:
-        st.info("Baza danych jest pusta.")
-        
+        st.info("Brak danych do wyświetlenia. Skorzystaj z panelu bocznego, aby dodać produkty.")
+
 except Exception as e:
-    st.error(f"Błąd połączenia z bazą: {e}")
+    st.error(f"Wystąpił błąd podczas ładowania danych: {e}")
