@@ -87,3 +87,27 @@ if st.button("Odśwież listę"):
             st.info("Baza danych jest pusta.")
     except Exception as e:
         st.error(f"Błąd podglądu: {e}")
+        # --- SEKCJA 4: ANALIZA DANYCH (WYKRESY) ---
+st.header("Analityka Zapasów")
+
+# Pobieramy dane do wykresu
+produkty_query = supabase.table("produkty").select("nazwa, liczba").execute()
+df_produkty = produkty_query.data
+
+if df_produkty:
+    # Przygotowanie danych do formatu czytelnego dla wykresu
+    import pandas as pd
+    df = pd.DataFrame(df_produkty)
+    
+    # Ustawienie nazwy jako indeksu, aby oś X była opisana nazwami produktów
+    df = df.set_index("nazwa")
+
+    st.subheader("Liczba sztuk na magazynie")
+    st.bar_chart(df["liczba"])
+    
+    # Opcjonalnie: Wykres kołowy (wymaga plotly: pip install plotly)
+    # import plotly.express as px
+    # fig = px.pie(df.reset_index(), values='liczba', names='nazwa', title='Udział produktów w magazynie')
+    # st.plotly_chart(fig)
+else:
+    st.info("Brak danych do wyświetlenia wykresu.")
