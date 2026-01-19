@@ -29,8 +29,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- NAGŁÓWEK APLIKACJI ---
-st.markdown('<div class="main-title"><h1>🍎 Gabrysia\'s grocery Magazine</h1></div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title"><h1>🍎 Gabrysia\'s Grocery Magazine</h1></div>', unsafe_allow_html=True)
 
 # 1. Połączenie z Supabase
 try:
@@ -48,12 +47,12 @@ with st.sidebar:
     # SEKCJA: NOWA KATEGORIA
     with st.expander("Nowa Kategoria"):
         with st.form("cat_form", clear_on_submit=True):
-            k_kod = st.text_input("Kod")
-            k_nazwa = st.text_input("Nazwa")
-            if st.form_submit_button("Zapisz"):
+            k_kod = st.text_input("Kod (np. OWOC)")
+            k_nazwa = st.text_input("Nazwa (np. Owoce)")
+            if st.form_submit_button("Dodaj Kategorię"):
                 if k_kod and k_nazwa:
                     supabase.table("Kategoria").insert({"kod": k_kod, "nazwa": k_nazwa}).execute()
-                    st.success("Dodano kategorię!")
+                    st.success("Kategoria dodana!")
                     st.rerun()
 
     # SEKCJA: NOWY PRODUKT
@@ -62,6 +61,17 @@ with st.sidebar:
             k_res = supabase.table("Kategoria").select("id, nazwa").execute()
             k_dict = {item['nazwa']: item['id'] for item in k_res.data}
             
-            with st.form("prod_form", clear_on_submit=True):
-                p_nazwa = st.text_input("Nazwa produktu")
-                p_liczba =
+            if not k_dict:
+                st.warning("Najpierw dodaj kategorię!")
+            else:
+                with st.form("prod_form", clear_on_submit=True):
+                    p_nazwa = st.text_input("Nazwa produktu")
+                    p_liczba = st.number_input("Ilość", min_value=0, step=1)
+                    p_cena = st.number_input("Cena (PLN)", min_value=0.0, format="%.2f")
+                    p_kat = st.selectbox("Kategoria", options=list(k_dict.keys()))
+                    
+                    if st.form_submit_button("Zapisz Produkt"):
+                        if p_nazwa:
+                            supabase.table("produkt").insert({
+                                "nazwa": p_nazwa, 
+                                "liczba": p_liczba,
