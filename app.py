@@ -6,7 +6,7 @@ from supabase import create_client, Client
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Gabrysia's Grocery", layout="wide", initial_sidebar_state="expanded")
 
-# Custom CSS dla nowoczesnego wyglądu
+# Custom CSS
 st.markdown("""
     <style>
     .main-title {
@@ -45,6 +45,7 @@ except Exception as e:
 with st.sidebar:
     st.title("➕ Zarządzanie")
     
+    # SEKCJA: NOWA KATEGORIA
     with st.expander("Nowa Kategoria"):
         with st.form("cat_form", clear_on_submit=True):
             k_kod = st.text_input("Kod")
@@ -52,9 +53,10 @@ with st.sidebar:
             if st.form_submit_button("Zapisz"):
                 if k_kod and k_nazwa:
                     supabase.table("Kategoria").insert({"kod": k_kod, "nazwa": k_nazwa}).execute()
-                    st.success("Dodano!")
+                    st.success("Dodano kategorię!")
                     st.rerun()
 
+    # SEKCJA: NOWY PRODUKT
     with st.expander("Nowy Produkt", expanded=True):
         try:
             k_res = supabase.table("Kategoria").select("id, nazwa").execute()
@@ -62,61 +64,4 @@ with st.sidebar:
             
             with st.form("prod_form", clear_on_submit=True):
                 p_nazwa = st.text_input("Nazwa produktu")
-                p_liczba = st.number_input("Ilość", min_value=0)
-                p_cena = st.number_input("Cena (PLN)", min_value=0.0, format="%.2f")
-                p_kat = st.selectbox("Kategoria", options=list(k_dict.keys()))
-                
-                if st.form_submit_button("Zapisz Produkt"):
-                    if p_nazwa:
-                        supabase.table("produkt").insert({
-                            "nazwa": p_nazwa, "liczba": p_liczba, 
-                            "cena": p_cena, "kategoria_id": k_dict[p_kat]
-                        }).execute()
-                        st.toast("Produkt dodany!", icon="✅")
-                        st.rerun()
-        except:
-            st.warning("Najpierw dodaj kategorię!")
-
-# --- PANEL GŁÓWNY (DASHBOARD) ---
-try:
-    # Zwróć uwagę na nazwę tabeli: "produkt" czy "produkty"?
-    res = supabase.table("produkt").select("nazwa, liczba, cena, Kategoria(nazwa)").execute()
-    
-    if res.data:
-        df = pd.DataFrame(res.data)
-        df['kategoria_nazwa'] = df['Kategoria'].apply(lambda x: x['nazwa'] if isinstance(x, dict) else "Brak")
-
-        # METRYKI
-        m1, m2, m3 = st.columns(3)
-        m1.metric("🛒 Rodzaje produktów", len(df))
-        m2.metric("📦 Łączna ilość sztuk", int(df['liczba'].sum()))
-        total_val = (df['liczba'] * df['cena']).sum()
-        m3.metric("💰 Wartość zapasów", f"{total_val:,.2f} PLN")
-
-        st.divider()
-
-        # WYKRESY
-        c1, c2 = st.columns(2)
-        
-        with c1:
-            st.subheader("Ilość towaru")
-            fig_qty = px.bar(df, x="nazwa", y="liczba", color="kategoria_nazwa",
-                             color_discrete_sequence=px.colors.qualitative.Prism,
-                             template="plotly_white")
-            st.plotly_chart(fig_qty, use_container_width=True)
-
-        with c2:
-            st.subheader("Ceny produktów (PLN)")
-            fig_price = px.bar(df.sort_values('cena'), x="nazwa", y="cena",
-                               color_discrete_sequence=['#4caf50'],
-                               template="plotly_white")
-            st.plotly_chart(fig_price, use_container_width=True)
-
-        st.subheader("📝 Lista asortymentu")
-        st.dataframe(df[['nazwa', 'kategoria_nazwa', 'liczba', 'cena']], use_container_width=True)
-
-    else:
-        st.info("Baza danych jest pusta.")
-
-except Exception as e:
-    st.error(f"Błąd bazy danych: {e}")
+                p_liczba =
