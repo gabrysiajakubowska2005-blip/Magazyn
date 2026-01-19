@@ -37,97 +37,97 @@ try:
     key = st.secrets["SUPABASE_KEY"]
     supabase: Client = create_client(url, key)
 except Exception as e:
-    st.error("❌ Błąd konfiguracji Secrets. Sprawdź parametry w Streamlit Cloud.")
+    st.error("❌ Błąd połączenia. Sprawdź Secrets w Streamlit Cloud.")
     st.stop()
 
-# --- SIDEBAR ---
+# --- SIDEBAR: DODAWANIE ---
 with st.sidebar:
-    st.title("➕ Zarządzanie")
+    st.title("➕ Dodaj Nowe")
     
-    # Dodawanie Kategorii
     with st.expander("Nowa Kategoria"):
         with st.form("cat_form", clear_on_submit=True):
-            k_kod = st.text_input("Kod")
-            k_nazwa = st.text_input("Nazwa")
-            if st.form_submit_button("Zapisz kategorię"):
+            k_kod = st.text_input("Kod (np. NAB)")
+            k_nazwa = st.text_input("Nazwa (np. Nabiał)")
+            if st.form_submit_button("Dodaj"):
                 if k_kod and k_nazwa:
                     supabase.table("Kategoria").insert({"kod": k_kod, "nazwa": k_nazwa}).execute()
                     st.success("Dodano!")
                     st.rerun()
 
-    # Dodawanie Produktu
-    with st.expander("Nowy Produkt", expanded=True):
-        try:
-            k_res = supabase.table("Kategoria").select("id, nazwa").execute()
-            k_dict = {item['nazwa']: item['id'] for item in k_res.data}
-            
-            if k_dict:
-                with st.form("prod_form", clear_on_submit=True):
-                    p_nazwa = st.text_input("Nazwa produktu")
-                    p_liczba = st.number_input("Ilość", min_value=0, step=1)
-                    p_cena = st.number_input("Cena (PLN)", min_value=0.0, format="%.2f")
-                    p_kat = st.selectbox("Kategoria", options=list(k_dict.keys()))
-                    
-                    if st.form_submit_button("Zapisz Produkt"):
-                        if p_nazwa:
-                            supabase.table("produkt").insert({
-                                "nazwa": p_nazwa, 
-                                "liczba": p_liczba, 
-                                "cena": p_cena, 
-                                "kategoria_id": k_dict[p_kat]
-                            }).execute()
-                            st.toast("Produkt dodany!")
-                            st.rerun()
-            else:
-                st.warning("Najpierw stwórz kategorię.")
-        except:
-            st.error("Błąd ładowania kategorii.")
+    with st.expander("Nowy Produkt"):
+        k_res = supabase.table("Kategoria").select("id, nazwa").execute()
+        k_dict = {item['nazwa']: item['id'] for item in k_res.data}
+        if k_dict:
+            with st.form("prod_form", clear_on_submit=True):
+                p_nazwa = st.text_input("Nazwa")
+                p_liczba = st.number_input("Ilość", min_value=0, step=1)
+                p_cena = st.number_input("Cena", min_value=0.0, format="%.2f")
+                p_kat = st.selectbox("Kategoria", options=list(k_dict.keys()))
+                if st.form_submit_button("Zapisz"):
+                    supabase.table("produkt").insert({
+                        "nazwa": p_nazwa, "liczba": p_liczba, "cena": p_cena, "kategoria_id": k_dict[p_kat]
+                    }).execute()
+                    st.rerun()
 
-    # USUWANIE PRODUKTU
+    # --- EDYCJA I USUWANIE ---
     st.divider()
-    st.title("🗑️ Usuwanie")
-    with st.expander("Usuń z bazy"):
-        try:
-            p_res = supabase.table("produkt").select("id, nazwa").execute()
-            if p_res.data:
-                produkty = {item['nazwa']: item['id'] for item in p_res.data}
-                p_do_usuniecia = st.selectbox("Wybierz produkt", options=list(produkty.keys()))
-                if st.button("Usuń bezpowrotnie", type="primary"):
-                    supabase.table("produkt").delete().eq("id", produkty[p_do_usuniecia]).execute()
+    st.title("⚙️ Zarządzaj")
+
+    # 1. ZMIANA ILOŚCI
+    with st.expander("Zmień Ilość Sztuk"):
+        p_res = supabase.table("produkt").select("id, nazwa, liczba").execute()
+        if p_res.data:
+            p_options = {item['nazwa']: item for item in p_res.data}
+            sel_p_name = st.selectbox("Wybierz produkt", options=list(p_options.keys()), key="edit_qty_sel")
+            current_qty = p_options[sel_p_name]['liczba']
+            new_qty = st.number_input("Nowa ilość", value=int(current_qty), min_value=0)
+            if st.button("Aktualizuj ilość"):
+                supabase.table("produkt").update({"liczba": new_qty}).eq("id", p_options[sel_p_name]['id']).execute()
+                st.success("Zmieniono!")
+                st.rerun()
+
+    # 2. USUWANIE PRODUKTU
+    with st.expander("Usuń Produkt"):
+        if p_res.data:
+            p_to_del = st.selectbox("Produkt do usunięcia", options=list(p_options.keys()), key="del_prod_sel")
+            if st.button("USUŃ PRODUKT", type="primary"):
+                supabase.table("produkt").delete().eq("id", p_options[p_to_del]['id']).execute()
+                st.rerun()
+
+    # 3. USUWANIE KATEGORII
+    with st.expander("Usuń Kategorię"):
+        if k_dict:
+            kat_to_del = st.selectbox("Kategoria do usunięcia", options=list(k_dict.keys()))
+            if st.button("USUŃ KATEGORIĘ", type="primary"):
+                # Sprawdzenie czy kategoria jest pusta
+                check_p = supabase.table("produkt").select("id").eq("kategoria_id", k_dict[kat_to_del]).execute()
+                if len(check_p.data) > 0:
+                    st.error("Nie można usunąć! Ta kategoria zawiera produkty.")
+                else:
+                    supabase.table("Kategoria").delete().eq("id", k_dict[kat_to_del]).execute()
                     st.success("Usunięto!")
                     st.rerun()
-            else:
-                st.info("Brak produktów.")
-        except:
-            st.info("Brak danych.")
 
-# --- DASHBOARD ---
+# --- PANEL GŁÓWNY ---
 try:
     res = supabase.table("produkt").select("nazwa, liczba, cena, Kategoria(nazwa)").execute()
-    
     if res.data:
         df = pd.DataFrame(res.data)
         df['kategoria_nazwa'] = df['Kategoria'].apply(lambda x: x['nazwa'] if isinstance(x, dict) else "Brak")
 
-        # Metryki
-        col1, col2, col3 = st.columns(3)
-        col1.metric("🛒 Produkty", len(df))
-        col2.metric("📦 Sztuki", int(df['liczba'].sum()))
-        wartosc = (df['liczba'] * df['cena']).sum()
-        col3.metric("💰 Wartość", f"{wartosc:,.2f} PLN")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("🛒 Produkty", len(df))
+        m2.metric("📦 Sztuki", int(df['liczba'].sum()))
+        m3.metric("💰 Wartość", f"{(df['liczba'] * df['cena']).sum():,.2f} PLN")
 
         st.divider()
-
-        # Wykresy
         c1, c2 = st.columns(2)
         with c1:
-            fig1 = px.bar(df, x="nazwa", y="liczba", color="kategoria_nazwa", title="Ilość", template="plotly_white")
-            st.plotly_chart(fig1, use_container_width=True)
+            st.plotly_chart(px.bar(df, x="nazwa", y="liczba", color="kategoria_nazwa", title="Stan magazynowy"), use_container_width=True)
         with c2:
-            fig2 = px.bar(df, x="nazwa", y="cena", title="Cena PLN", template="plotly_white")
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(px.bar(df, x="nazwa", y="cena", title="Cena PLN"), use_container_width=True)
 
-        st.subheader("📋 Pełna lista")
+        st.subheader("📋 Tabela asortymentu")
         st.dataframe(df[['nazwa', 'kategoria_nazwa', 'liczba', 'cena']], use_container_width=True)
     else:
         st.info("Baza jest pusta.")
